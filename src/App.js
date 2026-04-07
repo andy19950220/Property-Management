@@ -511,6 +511,29 @@ function ReportGenerator({properties:ps,complianceData:cd,onUploadToReport}){
 
 function AIBot({properties,complianceData,historyData,onNavigate}){
   const[msgs,setMsgs]=useState([]);const[input,setInput]=useState("");const[thinking,setThinking]=useState(false);const chatRef=useRef(null);
+  const[listening,setListening]=useState(false);const[speaking,setSpeaking]=useState(false);const recognitionRef=useRef(null);
+
+  // ── Voice: Speech-to-Text (mic) ──
+  const SpeechRecognition=typeof window!=="undefined"&&(window.SpeechRecognition||window.webkitSpeechRecognition);
+  const startListening=()=>{
+    if(!SpeechRecognition){alert("您的浏览器不支持语音识别，请使用 Chrome 或 Edge");return;}
+    if(listening){if(recognitionRef.current)recognitionRef.current.stop();setListening(false);return;}
+    const rec=new SpeechRecognition();rec.lang="zh-HK";rec.interimResults=true;rec.continuous=false;
+    rec.onstart=()=>setListening(true);
+    rec.onresult=(e)=>{const t=Array.from(e.results).map(r=>r[0].transcript).join("");setInput(t);};
+    rec.onend=()=>setListening(false);
+    rec.onerror=()=>setListening(false);
+    recognitionRef.current=rec;rec.start();
+  };
+
+  // ── Voice: Text-to-Speech (speaker) ──
+  const speakText=(text)=>{
+    if(speaking){speechSynthesis.cancel();setSpeaking(false);return;}
+    const clean=text.replace(/\*\*/g,"").replace(/[📊🔴🟡🟢🔵⚠️🚨💡📋🏢📅✅⏳⬜🤖🎙️🔊📎🔥🏗️🛗⚡🏘️📋🌿💰•█]/g,"").replace(/\n+/g,"。").trim();
+    const utt=new SpeechSynthesisUtterance(clean);utt.lang="zh-HK";utt.rate=1.1;
+    utt.onstart=()=>setSpeaking(true);utt.onend=()=>setSpeaking(false);utt.onerror=()=>setSpeaking(false);
+    speechSynthesis.speak(utt);
+  };
 
   // ── Analysis engine ──
   const analyze=useCallback(()=>{
@@ -692,16 +715,21 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
       {/* Header */}
       <div style={{padding:"16px 20px",background:"rgba(255,255,255,0.05)",borderBottom:"1px solid rgba(255,255,255,0.1)",display:"flex",alignItems:"center",gap:10}}>
         <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#00d2ff,#3a7bd5)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🤖</div>
-        <div><div style={{fontSize:15,fontWeight:600,color:"#fff"}}>合规智能助手</div><div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>AI Compliance Analyzer · 本地运行 · 无需API</div></div>
+        <div><div style={{fontSize:15,fontWeight:600,color:"#fff"}}>合规智能助手</div><div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>AI Compliance Analyzer · 语音支持 · 本地运行 · 无需API</div></div>
+        {speaking&&<button onClick={()=>{speechSynthesis.cancel();setSpeaking(false);}} style={{marginLeft:"auto",padding:"4px 10px",borderRadius:6,border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.7)",cursor:"pointer",fontSize:11}}>⏹ 停止朗读</button>}
       </div>
 
       {/* Chat area */}
       <div ref={chatRef} style={{height:420,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:12}}>
         {msgs.map((m,i)=>(
-          <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
+          <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",alignItems:"flex-end",gap:4}}>
             <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:m.role==="user"?"14px 14px 4px 14px":"14px 14px 14px 4px",background:m.role==="user"?"linear-gradient(135deg,#3a7bd5,#00d2ff)":"rgba(255,255,255,0.08)",color:m.role==="user"?"#fff":"rgba(255,255,255,0.9)",fontSize:13,lineHeight:1.6,backdropFilter:"blur(10px)"}}>
               {renderText(m.text)}
             </div>
+            {m.role==="bot"&&<button onClick={()=>speakText(m.text)} title="朗读" style={{width:26,height:26,borderRadius:6,border:"none",background:"rgba(255,255,255,0.08)",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:12,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}
+              onMouseOver={e=>{e.target.style.background="rgba(255,255,255,0.2)";}}
+              onMouseOut={e=>{e.target.style.background="rgba(255,255,255,0.08)";}}
+            >🔊</button>}
           </div>
         ))}
         {thinking&&<div style={{display:"flex",justifyContent:"flex-start"}}><div style={{padding:"10px 14px",borderRadius:"14px 14px 14px 4px",background:"rgba(255,255,255,0.08)",color:"rgba(255,255,255,0.5)",fontSize:13}}>分析中<span style={{animation:"blink 1s infinite"}}>...</span></div></div>}
@@ -720,13 +748,20 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
       </div>
 
       {/* Input */}
-      <div style={{padding:"12px 16px",borderTop:"1px solid rgba(255,255,255,0.1)",display:"flex",gap:8}}>
+      <div style={{padding:"12px 16px",borderTop:"1px solid rgba(255,255,255,0.1)",display:"flex",gap:8,alignItems:"center"}}>
+        <button onClick={startListening} title={listening?"停止录音":"语音输入"}
+          style={{width:40,height:40,borderRadius:10,border:"none",background:listening?"linear-gradient(135deg,#e74c3c,#c0392b)":"rgba(255,255,255,0.08)",color:"#fff",cursor:"pointer",fontSize:16,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s",animation:listening?"pulse 1.5s infinite":"none"}}
+          onMouseOver={e=>{if(!listening)e.currentTarget.style.background="rgba(255,255,255,0.15)";}}
+          onMouseOut={e=>{if(!listening)e.currentTarget.style.background="rgba(255,255,255,0.08)";}}
+        >🎙️</button>
+        <style>{`@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,0.4)}50%{box-shadow:0 0 0 10px rgba(231,76,60,0)}}`}</style>
         <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")send();}}
-          placeholder="输入问题，例如：逾期、分类、风险评估..."
-          style={{flex:1,padding:"10px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.05)",color:"#fff",fontSize:13,outline:"none"}}/>
+          placeholder={listening?"正在聆听...":"输入或按🎙️语音提问"}
+          style={{flex:1,padding:"10px 14px",borderRadius:10,border:listening?"1px solid rgba(231,76,60,0.5)":"1px solid rgba(255,255,255,0.15)",background:listening?"rgba(231,76,60,0.08)":"rgba(255,255,255,0.05)",color:"#fff",fontSize:13,outline:"none",transition:"all 0.2s"}}/>
         <button onClick={send} disabled={!input.trim()||thinking}
           style={{padding:"10px 18px",borderRadius:10,border:"none",background:input.trim()&&!thinking?"linear-gradient(135deg,#3a7bd5,#00d2ff)":"rgba(255,255,255,0.1)",color:"#fff",cursor:input.trim()&&!thinking?"pointer":"default",fontSize:13,fontWeight:600}}>发送</button>
       </div>
+      {listening&&<div style={{padding:"4px 16px 8px",fontSize:11,color:"rgba(231,76,60,0.8)",textAlign:"center"}}>🔴 正在录音 — 请说话，完成后点击🎙️或自动停止</div>}
     </div>
   </div>);
 }
