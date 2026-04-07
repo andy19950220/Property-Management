@@ -674,7 +674,7 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
     // ── Property comparison ──
     if(ql.includes("物业")||ql.includes("property")||ql.includes("building")||ql.includes("楼")){
       const ps=Object.values(data.propStats);
-      if(ps.length===0)return "目前还没有添加物业，到"物业"页面新增一个吧。";
+      if(ps.length===0)return `目前还没有添加物业，到"物业"页面新增一个吧。`;
       if(ps.length===1){
         const p=ps[0];const pRate=p.total>0?Math.round(p.done/p.total*100):0;
         let r=`你目前只有 **${p.name}**，合规率 ${pRate}%。`;
@@ -792,7 +792,7 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
     if(ql.includes("承办商")||ql.includes("vendor")||ql.includes("联系")||ql.includes("contact")){
       const vendors={};data.allItems.forEach(i=>{if(i.rec.vendor){if(!vendors[i.rec.vendor])vendors[i.rec.vendor]={total:0,overdue:0,dueSoon:0};vendors[i.rec.vendor].total++;if(i.urgency==="overdue")vendors[i.rec.vendor].overdue++;if(i.urgency==="due_soon")vendors[i.rec.vendor].dueSoon++;}});
       const vList=Object.entries(vendors).sort((a,b)=>b[1].overdue-a[1].overdue);
-      if(vList.length===0)return "目前没有记录承办商信息。到"合规"页面编辑各项目时可以添加。"+actionBlock();
+      if(vList.length===0)return `目前没有记录承办商信息。到"合规"页面编辑各项目时可以添加。`+actionBlock();
       let r=`你目前有 ${vList.length} 个承办商：\n\n`;
       vList.forEach(([name,v])=>{
         let status=v.overdue>0?`⚠️ ${v.overdue}项逾期 — 需要马上联系`:v.dueSoon>0?`${v.dueSoon}项快到期 — 提前沟通排期`:"当前无紧急事项";
