@@ -608,8 +608,9 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
     return ctx;
   },[analyze,properties]);
 
-  // ── Call Claude API ──
+  // ── Call Claude API, fallback to local bot ──
   const callAI=async(q)=>{
+    // Try real AI first
     try{
       const ctx=buildContext();
       const res=await fetch("/api/chat",{
@@ -617,13 +618,13 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
         headers:{"content-type":"application/json"},
         body:JSON.stringify({message:q,context:ctx})
       });
-      if(!res.ok)throw new Error("API error");
-      const data=await res.json();
-      return data.reply||"抱歉，无法获取回复。";
-    }catch(err){
-      console.error("AI call failed:",err);
-      return "网络错误，无法连接AI服务。请检查网络连接后重试。";
-    }
+      if(res.ok){
+        const data=await res.json();
+        if(data.reply)return data.reply;
+      }
+    }catch{}
+    // Fallback to local smart bot
+    return getResponse(q);
   };
 
   // ── Kept for quick-action buttons (backward compat) ──
