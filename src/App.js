@@ -783,13 +783,8 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
       return r;
     }
 
-    // ── Help ──
-    if(ql.includes("help")||ql.includes("帮助")||ql.includes("功能")||ql.includes("?")||ql.includes("？")||ql.includes("什么")){
-      return `我可以用自然语言跟你聊合规状况，比如：\n\n• "现在状况怎么样" — 我会告诉你整体情况和该做什么\n• "哪些逾期了" — 列出逾期项目和处理建议\n• "消防安全怎么样" — 查看特定类别\n• "海景花园情况" — 查看特定物业\n• "风险大不大" — 给你评分和风险分析\n• "最近做了什么" — 历史趋势\n\n也可以直接问问题，比如"下个月要做什么"或"该联系哪个承办商"。`;
-    }
-
     // ── Vendor related ──
-    if(ql.includes("承办商")||ql.includes("vendor")||ql.includes("联系")||ql.includes("contact")){
+    if(ql.includes("承办商")||ql.includes("vendor")||ql.includes("联系谁")||ql.includes("联系哪")){
       const vendors={};data.allItems.forEach(i=>{if(i.rec.vendor){if(!vendors[i.rec.vendor])vendors[i.rec.vendor]={total:0,overdue:0,dueSoon:0};vendors[i.rec.vendor].total++;if(i.urgency==="overdue")vendors[i.rec.vendor].overdue++;if(i.urgency==="due_soon")vendors[i.rec.vendor].dueSoon++;}});
       const vList=Object.entries(vendors).sort((a,b)=>b[1].overdue-a[1].overdue);
       if(vList.length===0)return `目前没有记录承办商信息。到"合规"页面编辑各项目时可以添加。`+actionBlock();
@@ -802,8 +797,8 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
       return r;
     }
 
-    // ── Next month / upcoming ──
-    if(ql.includes("下个月")||ql.includes("next month")||ql.includes("接下来")||ql.includes("upcoming")||ql.includes("计划")||ql.includes("plan")){
+    // ── Next month / upcoming / what to do ──
+    if(ql.includes("下个月")||ql.includes("next month")||ql.includes("接下来")||ql.includes("upcoming")||ql.includes("计划")||ql.includes("plan")||ql.includes("要做")||ql.includes("to do")||ql.includes("todo")||ql.includes("什么事")||ql.includes("做什么")){
       const upcoming=data.allItems.filter(i=>i.daysLeft!==null&&i.daysLeft>0&&i.daysLeft<=60&&i.urgency!=="completed").sort((a,b)=>a.daysLeft-b.daysLeft);
       if(upcoming.length===0&&overdue.length===0)return "接下来60天内没有到期项目，也没有逾期。状态良好！"+actionBlock();
       let r=``;
@@ -817,18 +812,25 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
       return r;
     }
 
-    // ── Fallback: intelligent default based on current state ──
-    const r=[];
-    if(overdue.length>0){
-      r.push(`我注意到你有 ${overdue.length} 项逾期，最紧急的是「${overdue[0].name}」在${overdue[0].propName}，已超期 ${Math.abs(overdue[0].daysLeft)} 天。`);
-      r.push(`→ 建议${overdue[0].rec.vendor?`先联系 ${overdue[0].rec.vendor} 安排处理`:"先到合规页面指定承办商"}。`);
-    }else if(dueSoon.length>0){
-      r.push(`目前没有逾期项目，但有 ${dueSoon.length} 项即将到期。最近的是「${dueSoon[0].name}」，还剩 ${dueSoon[0].daysLeft} 天。`);
-    }else{
-      r.push(`你的合规状况不错，合规率 ${rate}%，没有紧急事项。`);
+    // ── Help (only exact help requests) ──
+    if(ql==="help"||ql==="帮助"||ql==="功能"||ql==="?"||ql==="？"||ql==="能做什么"||ql==="你能做什么"||ql==="有什么功能"){
+      return `我可以用自然语言跟你聊合规状况，比如：\n\n• "现在怎么样" — 整体情况\n• "哪些逾期了" — 逾期分析\n• "消防安全怎么样" — 特定类别\n• "海景花园情况" — 特定物业\n• "风险大不大" — 风险评分\n• "下个月要做什么" — 即将到期\n• "该联系谁" — 承办商信息\n\n直接用自然语言问就行。`;
     }
-    r.push(`\n你可以跟我聊任何合规相关的问题，比如"消防安全怎么样"、"下个月要做什么"、"哪个承办商要联系"等。`);
-    return r.join("\n");
+
+    // ── Fallback: always give a useful answer based on current state ──
+    let r=``;
+    if(overdue.length>0){
+      r+=`你目前有 ${overdue.length} 项逾期，最紧急的是「${overdue[0].name}」在${overdue[0].propName}，已超期 ${Math.abs(overdue[0].daysLeft)} 天。`;
+      r+=`\n→ 建议${overdue[0].rec.vendor?`先联系 ${overdue[0].rec.vendor} 安排处理`:"先到合规页面指定承办商"}。`;
+      if(dueSoon.length>0)r+=`\n\n另外还有 ${dueSoon.length} 项将在30天内到期，也需要开始安排。`;
+    }else if(dueSoon.length>0){
+      r+=`目前没有逾期，但有 ${dueSoon.length} 项即将到期。最近的是「${dueSoon[0].name}」(${dueSoon[0].propName})，还剩 ${dueSoon[0].daysLeft} 天。`;
+      r+=`\n→ ${dueSoon[0].rec.vendor?`建议联系 ${dueSoon[0].rec.vendor} 提前排期`:"需要指定承办商来安排检查"}。`;
+    }else{
+      r+=`合规率 ${rate}%，目前没有逾期也没有即将到期的项目，状态很好。`;
+    }
+    r+=actionBlock();
+    return r;
   };
 
   const send=()=>{
