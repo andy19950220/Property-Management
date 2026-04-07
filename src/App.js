@@ -572,15 +572,62 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
     return{allItems,catStats,propStats,histByMonth,histByCat,totalHistory:historyData.length};
   },[properties,complianceData,historyData]);
 
-  // ── Conversational AI response engine ──
-  const getResponse=(q)=>{
-    const data=analyze();const ql=q.toLowerCase();const total=data.allItems.length;
+  // ── Build context string for Claude ──
+  const buildContext=useCallback(()=>{
+    const data=analyze();const total=data.allItems.length;
     const overdue=data.allItems.filter(i=>i.urgency==="overdue").sort((a,b)=>a.daysLeft-b.daysLeft);
     const dueSoon=data.allItems.filter(i=>i.urgency==="due_soon").sort((a,b)=>a.daysLeft-b.daysLeft);
     const completed=data.allItems.filter(i=>i.urgency==="completed");
-    const inProgress=data.allItems.filter(i=>i.urgency==="in_progress");
-    const notSet=data.allItems.filter(i=>i.urgency==="not_set");
     const rate=total>0?Math.round(completed.length/total*100):0;
+    let ctx=`Today: ${fmt(new Date())}\nProperties: ${properties.length}, Total items: ${total}, Completed: ${completed.length} (${rate}%), Overdue: ${overdue.length}, Due within 30 days: ${dueSoon.length}\n\n`;
+    // Property details
+    properties.forEach(p=>{
+      const ps=data.propStats[p.id];if(!ps)return;
+      const pRate=ps.total>0?Math.round(ps.done/ps.total*100):0;
+      ctx+=`Property: ${p.name} | ${p.address||"no address"} | Age: ${p.buildingAge||"?"}yr | Lifts: ${p.lifts} | Escalators: ${p.escalators}\n`;
+      ctx+=`  Compliance: ${pRate}% done (${ps.done}/${ps.total}), ${ps.overdue} overdue, ${ps.dueSoon} due soon, ${ps.notSet} not set\n`;
+    });
+    // Overdue items
+    if(overdue.length>0){
+      ctx+=`\nOVERDUE ITEMS:\n`;
+      overdue.forEach(i=>{ctx+=`  - ${i.name} (${i.category}) @ ${i.propName} | ${Math.abs(i.daysLeft)} days overdue | Vendor: ${i.rec.vendor||"none"} | Contract: ${i.rec.contractNo||"none"} | Law: ${i.law||i.agency} | Notes: ${i.rec.notes||"none"}\n`;});
+    }
+    // Due soon
+    if(dueSoon.length>0){
+      ctx+=`\nDUE WITHIN 30 DAYS:\n`;
+      dueSoon.forEach(i=>{ctx+=`  - ${i.name} (${i.category}) @ ${i.propName} | ${i.daysLeft} days left | Vendor: ${i.rec.vendor||"none"} | Due: ${i.rec.dueDate}\n`;});
+    }
+    // Category stats
+    ctx+=`\nCATEGORY STATS:\n`;
+    Object.entries(data.catStats).forEach(([cat,s])=>{
+      ctx+=`  ${cat}: ${s.done}/${s.total} done, ${s.overdue} overdue, ${s.dueSoon} due soon\n`;
+    });
+    // Recent history
+    ctx+=`\nRECENT HISTORY: ${data.totalHistory} total records\n`;
+    Object.entries(data.histByMonth).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,6).forEach(([ym,cnt])=>{ctx+=`  ${ym}: ${cnt} completed\n`;});
+    return ctx;
+  },[analyze,properties]);
+
+  // ── Call Claude API ──
+  const callAI=async(q)=>{
+    try{
+      const ctx=buildContext();
+      const res=await fetch("/api/chat",{
+        method:"POST",
+        headers:{"content-type":"application/json"},
+        body:JSON.stringify({message:q,context:ctx})
+      });
+      if(!res.ok)throw new Error("API error");
+      const data=await res.json();
+      return data.reply||"抱歉，无法获取回复。";
+    }catch(err){
+      console.error("AI call failed:",err);
+      return "网络错误，无法连接AI服务。请检查网络连接后重试。";
+    }
+  };
+
+  // ── Kept for quick-action buttons (backward compat) ──
+  const getResponse=(q)=>{
 
     // Helper: build contextual action suggestions based on current state
     const actionBlock=()=>{
@@ -833,13 +880,16 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
     return r;
   };
 
-  const send=()=>{
+  const send=async()=>{
     const q=input.trim();if(!q)return;
     setMsgs(prev=>[...prev,{role:"user",text:q}]);setInput("");setThinking(true);
-    setTimeout(()=>{
-      const resp=getResponse(q);
-      setMsgs(prev=>[...prev,{role:"bot",text:resp}]);setThinking(false);
-    },400+Math.random()*600);
+    try{
+      const resp=await callAI(q);
+      setMsgs(prev=>[...prev,{role:"bot",text:resp}]);
+    }catch{
+      setMsgs(prev=>[...prev,{role:"bot",text:"抱歉，出了点问题。请重试。"}]);
+    }
+    setThinking(false);
   };
 
   useEffect(()=>{if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight;},[msgs,thinking]);
@@ -899,7 +949,7 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
       {/* Quick actions */}
       <div style={{padding:"8px 16px",display:"flex",gap:6,overflowX:"auto",borderTop:"1px solid rgba(255,255,255,0.05)"}}>
         {[{l:"📊 总览",q:"总览"},{l:"🔴 逾期",q:"逾期"},{l:"📋 分类",q:"分类"},{l:"⚠️ 风险",q:"风险"},{l:"💡 建议",q:"建议"},{l:"📅 历史",q:"历史"}].map(b=>(
-          <button key={b.q} onClick={()=>{setInput(b.q);setTimeout(()=>{const q=b.q;setMsgs(prev=>[...prev,{role:"user",text:q}]);setInput("");setThinking(true);setTimeout(()=>{setMsgs(prev=>[...prev,{role:"bot",text:getResponse(q)}]);setThinking(false);},500);},50);}}
+          <button key={b.q} onClick={async()=>{const q=b.q;setMsgs(prev=>[...prev,{role:"user",text:q}]);setThinking(true);try{const resp=await callAI(q);setMsgs(prev=>[...prev,{role:"bot",text:resp}]);}catch{setMsgs(prev=>[...prev,{role:"bot",text:"抱歉，出了点问题。"}]);}setThinking(false);}}
             style={{padding:"5px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.7)",fontSize:11,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.15s",flexShrink:0}}
             onMouseOver={e=>{e.target.style.background="rgba(255,255,255,0.15)";}}
             onMouseOut={e=>{e.target.style.background="rgba(255,255,255,0.05)";}}
