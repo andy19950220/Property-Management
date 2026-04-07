@@ -572,112 +572,263 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
     return{allItems,catStats,propStats,histByMonth,histByCat,totalHistory:historyData.length};
   },[properties,complianceData,historyData]);
 
-  // ── Bot response logic ──
+  // ── Conversational AI response engine ──
   const getResponse=(q)=>{
     const data=analyze();const ql=q.toLowerCase();const total=data.allItems.length;
-    const overdue=data.allItems.filter(i=>i.urgency==="overdue");
-    const dueSoon=data.allItems.filter(i=>i.urgency==="due_soon");
+    const overdue=data.allItems.filter(i=>i.urgency==="overdue").sort((a,b)=>a.daysLeft-b.daysLeft);
+    const dueSoon=data.allItems.filter(i=>i.urgency==="due_soon").sort((a,b)=>a.daysLeft-b.daysLeft);
     const completed=data.allItems.filter(i=>i.urgency==="completed");
+    const inProgress=data.allItems.filter(i=>i.urgency==="in_progress");
+    const notSet=data.allItems.filter(i=>i.urgency==="not_set");
     const rate=total>0?Math.round(completed.length/total*100):0;
 
-    // ── Quick commands ──
-    if(ql.includes("总览")||ql.includes("summary")||ql.includes("overview")||ql.includes("状况")||ql==="hi"||ql==="你好"||ql.includes("报告")||ql.includes("report")){
-      let r=`📊 **合规总览**\n\n`;
-      r+=`物业数量：${properties.length}\n`;
-      r+=`合规项总计：${total}\n`;
-      r+=`✅ 已完成：${completed.length} (${rate}%)\n`;
-      r+=`🔴 已逾期：${overdue.length}\n`;
-      r+=`🟡 30天内到期：${dueSoon.length}\n`;
-      r+=`📁 历史记录：${data.totalHistory} 条\n\n`;
-      if(overdue.length>0)r+=`⚠️ **需立即处理的逾期项目：**\n`+overdue.sort((a,b)=>a.daysLeft-b.daysLeft).slice(0,5).map(i=>`  • ${i.catIcon} ${i.name} (${i.propName}) — 逾期 ${Math.abs(i.daysLeft)} 天`).join("\n")+"\n\n";
-      if(dueSoon.length>0)r+=`⏰ **即将到期：**\n`+dueSoon.sort((a,b)=>a.daysLeft-b.daysLeft).slice(0,5).map(i=>`  • ${i.catIcon} ${i.name} (${i.propName}) — ${i.daysLeft} 天后`).join("\n")+"\n";
-      return r;
-    }
-
-    if(ql.includes("逾期")||ql.includes("overdue")||ql.includes("过期")){
-      if(overdue.length===0)return "✅ 目前没有逾期项目，所有合规事项均在有效期内。";
-      let r=`🔴 **逾期项目分析** (共 ${overdue.length} 项)\n\n`;
-      const byCat={};overdue.forEach(i=>{if(!byCat[i.category])byCat[i.category]={icon:i.catIcon,items:[]};byCat[i.category].items.push(i);});
-      Object.entries(byCat).forEach(([cat,v])=>{r+=`**${v.icon} ${cat}** (${v.items.length} 项逾期)\n`;v.items.sort((a,b)=>a.daysLeft-b.daysLeft).forEach(i=>{r+=`  • ${i.name} @ ${i.propName} — 逾期 ${Math.abs(i.daysLeft)} 天\n`;if(i.rec.vendor)r+=`    承办商：${i.rec.vendor}\n`;});r+="\n";});
-      r+=`💡 **建议优先级：** 逾期超过90天的项目应优先安排，可能面临罚款风险。`;
-      return r;
-    }
-
-    if(ql.includes("分类")||ql.includes("categoriz")||ql.includes("category")||ql.includes("类别")){
-      let r=`📋 **按类别合规分析**\n\n`;
-      Object.entries(data.catStats).sort((a,b)=>b[1].overdue-a[1].overdue).forEach(([cat,s])=>{
-        const catRate=s.total>0?Math.round(s.done/s.total*100):0;
-        const risk=s.overdue>2?"🔴 高风险":s.overdue>0?"🟡 中风险":catRate>=80?"🟢 良好":"🔵 进行中";
-        r+=`**${s.icon} ${cat}** ${risk}\n`;
-        r+=`  完成率 ${catRate}% (${s.done}/${s.total}) | 逾期 ${s.overdue} | 即将到期 ${s.dueSoon}\n\n`;
-      });
-      return r;
-    }
-
-    if(ql.includes("物业")||ql.includes("property")||ql.includes("building")){
-      let r=`🏢 **物业合规对比**\n\n`;
-      Object.values(data.propStats).forEach(p=>{
-        const pRate=p.total>0?Math.round(p.done/p.total*100):0;
-        const risk=p.overdue>5?"🔴":p.overdue>0?"🟡":"🟢";
-        r+=`**${risk} ${p.name}**\n`;
-        r+=`  完成率 ${pRate}% | ✅${p.done} 🔴${p.overdue} 🟡${p.dueSoon} ⏳${p.inProgress} ⬜${p.notSet}\n\n`;
-      });
-      return r;
-    }
-
-    if(ql.includes("风险")||ql.includes("risk")||ql.includes("评估")){
-      let r=`⚠️ **风险评估报告**\n\n`;
-      // Score each property
-      Object.values(data.propStats).forEach(p=>{
-        const score=Math.max(0,100-p.overdue*15-p.notSet*5-(p.total-p.done-p.overdue)*2);
-        const grade=score>=80?"A (优秀)":score>=60?"B (良好)":score>=40?"C (需改善)":"D (高风险)";
-        r+=`**${p.name}** — 评分 ${score}/100 (${grade})\n`;
-      });
-      r+="\n**风险因素权重：**\n";
-      r+=`  • 逾期项目：-15分/项\n  • 未设置到期日：-5分/项\n  • 未完成项目：-2分/项\n\n`;
-      // Top risks
-      const critical=overdue.filter(i=>Math.abs(i.daysLeft)>90);
-      if(critical.length>0){r+=`🚨 **严重逾期 (>90天)：**\n`;critical.forEach(i=>{r+=`  • ${i.catIcon} ${i.name} @ ${i.propName} — ${Math.abs(i.daysLeft)} 天 (${i.law||""})\n`;});}
-      return r;
-    }
-
-    if(ql.includes("历史")||ql.includes("history")||ql.includes("趋势")||ql.includes("trend")){
-      let r=`📅 **历史趋势分析**\n\n`;
-      r+=`总记录数：${data.totalHistory}\n\n`;
-      r+=`**按月份分布：**\n`;
-      Object.entries(data.histByMonth).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,12).forEach(([ym,cnt])=>{
-        const bar="█".repeat(Math.min(Math.ceil(cnt/2),20));
-        r+=`  ${ym} ${bar} ${cnt}\n`;
-      });
-      r+=`\n**按类别分布：**\n`;
-      Object.entries(data.histByCat).sort((a,b)=>b[1]-a[1]).forEach(([cat,cnt])=>{r+=`  • ${cat}：${cnt} 条\n`;});
-      return r;
-    }
-
-    if(ql.includes("建议")||ql.includes("suggest")||ql.includes("recommend")||ql.includes("怎么办")||ql.includes("action")){
-      let r=`💡 **行动建议**\n\n`;
+    // Helper: build contextual action suggestions based on current state
+    const actionBlock=()=>{
+      let a="\n\n**接下来你可以：**\n";
       if(overdue.length>0){
-        r+=`**1. 优先处理逾期项目** (${overdue.length} 项)\n`;
-        const urgentCats={};overdue.forEach(i=>{urgentCats[i.category]=(urgentCats[i.category]||0)+1;});
-        const topCat=Object.entries(urgentCats).sort((a,b)=>b[1]-a[1])[0];
-        r+=`   重点类别：${topCat[0]} (${topCat[1]} 项逾期)\n\n`;
+        const worst=overdue[0];
+        a+=`→ 立即处理「${worst.name}」(${worst.propName})，已逾期 ${Math.abs(worst.daysLeft)} 天，前往"合规"页面更新状态\n`;
       }
       if(dueSoon.length>0){
-        r+=`**2. 安排即将到期检查** (${dueSoon.length} 项，30天内)\n`;
         const vendors={};dueSoon.forEach(i=>{if(i.rec.vendor)vendors[i.rec.vendor]=(vendors[i.rec.vendor]||0)+1;});
-        if(Object.keys(vendors).length>0)r+=`   需联系承办商：${Object.entries(vendors).map(([v,c])=>`${v}(${c}项)`).join("、")}\n\n`;
+        const topVendor=Object.entries(vendors).sort((a,b)=>b[1]-a[1])[0];
+        if(topVendor)a+=`→ 联系 ${topVendor[0]}，安排 ${topVendor[1]} 项即将到期的检查\n`;
+        else a+=`→ 安排 ${dueSoon.length} 项即将到期检查的承办商\n`;
       }
-      const notSet=data.allItems.filter(i=>i.urgency==="not_set");
-      if(notSet.length>0)r+=`**3. 补充缺失数据** — ${notSet.length} 个项目尚未设置到期日\n\n`;
-      r+=`**4. 定期复查** — 建议每月使用本系统检查合规状态\n`;
+      if(notSet.length>5)a+=`→ 补充 ${notSet.length} 项缺失的到期日，到"合规"页面逐项填写\n`;
+      if(overdue.length===0&&dueSoon.length===0)a+=`→ 所有合规项目状态良好，可以到"报告"页面生成 AGM 报告\n`;
+      return a;
+    };
+
+    // ── Greetings & general ──
+    if(ql==="hi"||ql==="你好"||ql==="hello"||ql==="嗨"||ql==="hey"){
+      let r=`你好！你管理的 ${properties.length} 个物业目前合规率是 ${rate}%。`;
+      if(overdue.length>0)r+=`\n\n有 ${overdue.length} 个项目已经逾期了，最紧急的是「${overdue[0].name}」在${overdue[0].propName}，已经超期 ${Math.abs(overdue[0].daysLeft)} 天。建议今天就联系${overdue[0].rec.vendor||"相关承办商"}安排处理。`;
+      else if(dueSoon.length>0)r+=`\n\n没有逾期项目，但 ${dueSoon.length} 项会在30天内到期，最近的是「${dueSoon[0].name}」还剩 ${dueSoon[0].daysLeft} 天。`;
+      else r+=` 目前没有紧急事项，状态不错！`;
+      r+=actionBlock();
       return r;
     }
 
-    if(ql.includes("help")||ql.includes("帮助")||ql.includes("功能")||ql.includes("?")||ql.includes("？")){
-      return `🤖 **合规助手功能**\n\n您可以问我：\n• **"总览"** — 查看合规整体状况\n• **"逾期"** — 分析所有逾期项目\n• **"分类"** — 按类别查看合规率\n• **"物业"** — 对比各物业合规情况\n• **"风险"** — 风险评估与评分\n• **"历史"** — 历史趋势分析\n• **"建议"** — 获取行动建议\n• **"报告"** — 生成合规总览\n\n直接输入关键词即可！`;
+    // ── Summary / Overview ──
+    if(ql.includes("总览")||ql.includes("summary")||ql.includes("overview")||ql.includes("状况")||ql.includes("怎么样")||ql.includes("how")){
+      let r=`目前你有 **${properties.length}** 个物业、共 **${total}** 项合规事项。完成率 **${rate}%**。\n\n`;
+      if(rate>=80)r+=`整体状况不错。`;
+      else if(rate>=50)r+=`合规率偏低，需要加紧跟进。`;
+      else r+=`合规率较低，建议尽快排查未完成项目。`;
+      if(overdue.length>0){
+        r+=`\n\n目前有 **${overdue.length} 项逾期**，其中最严重的：`;
+        overdue.slice(0,3).forEach(i=>{r+=`\n• 「${i.name}」(${i.propName}) 逾期 ${Math.abs(i.daysLeft)} 天 — ${i.rec.vendor?`联系 ${i.rec.vendor} 尽快安排`:"需要指定承办商"}`;});
+      }
+      if(dueSoon.length>0){
+        r+=`\n\n另有 **${dueSoon.length} 项**将在30天内到期：`;
+        dueSoon.slice(0,3).forEach(i=>{r+=`\n• 「${i.name}」(${i.propName}) ${i.daysLeft} 天后到期`;});
+      }
+      r+=actionBlock();
+      return r;
     }
 
-    return `我可以帮您分析合规数据。试试输入：\n• "总览" — 合规总览\n• "逾期" — 逾期分析\n• "分类" — 类别分析\n• "风险" — 风险评估\n• "建议" — 行动建议\n• "帮助" — 查看所有功能`;
+    // ── Overdue ──
+    if(ql.includes("逾期")||ql.includes("overdue")||ql.includes("过期")||ql.includes("late")||ql.includes("expired")){
+      if(overdue.length===0)return `好消息 — 目前所有合规项目都在有效期内，没有逾期。\n\n继续保持！下一个到期的是「${dueSoon.length>0?dueSoon[0].name:"暂无"}」${dueSoon.length>0?`，还剩 ${dueSoon[0].daysLeft} 天`:""}。`;
+      const critical=overdue.filter(i=>Math.abs(i.daysLeft)>90);
+      const recent=overdue.filter(i=>Math.abs(i.daysLeft)<=30);
+      let r=`共有 **${overdue.length} 项逾期**，需要你的关注。\n\n`;
+      if(critical.length>0){
+        r+=`**最紧急** — 这 ${critical.length} 项已超期90天以上，可能面临政府罚款：\n`;
+        critical.forEach(i=>{r+=`• 「${i.name}」@ ${i.propName}，逾期 ${Math.abs(i.daysLeft)} 天 (${i.law||i.agency})\n`;r+=`  → ${i.rec.vendor?`马上联系 ${i.rec.vendor} (${i.rec.contractNo||"无合约号"}) 排期`:"需要先指定一个承办商"}\n`;});
+      }
+      if(recent.length>0){
+        r+=`\n**刚刚逾期** (30天内) — 还有机会快速补救：\n`;
+        recent.forEach(i=>{r+=`• 「${i.name}」@ ${i.propName}，逾期 ${Math.abs(i.daysLeft)} 天\n`;});
+      }
+      const mid=overdue.filter(i=>Math.abs(i.daysLeft)>30&&Math.abs(i.daysLeft)<=90);
+      if(mid.length>0)r+=`\n还有 ${mid.length} 项逾期30-90天，也需尽快安排。`;
+      r+=actionBlock();
+      return r;
+    }
+
+    // ── Category analysis ──
+    if(ql.includes("分类")||ql.includes("categoriz")||ql.includes("category")||ql.includes("类别")||ql.includes("哪个类")){
+      const cats=Object.entries(data.catStats).sort((a,b)=>b[1].overdue-a[1].overdue);
+      const worstCat=cats.find(([,s])=>s.overdue>0);
+      const bestCat=cats.filter(([,s])=>s.total>0).sort((a,b)=>(b[1].done/b[1].total)-(a[1].done/a[1].total))[0];
+      let r=``;
+      if(worstCat){
+        r+=`最需要关注的类别是 **${worstCat[0]}**，有 ${worstCat[1].overdue} 项逾期。`;
+      }
+      if(bestCat){
+        const bestRate=Math.round(bestCat[1].done/bestCat[1].total*100);
+        r+=`${worstCat?"\n\n":""}表现最好的是 **${bestCat[0]}**，完成率 ${bestRate}%。`;
+      }
+      r+=`\n\n各类别情况：\n`;
+      cats.forEach(([cat,s])=>{
+        const catRate=s.total>0?Math.round(s.done/s.total*100):0;
+        let status=s.overdue>0?`${s.overdue}项逾期，需马上处理`:s.dueSoon>0?`${s.dueSoon}项快到期，注意跟进`:catRate>=80?"状态良好":"还有待完善";
+        r+=`${s.icon} **${cat}** — 完成 ${s.done}/${s.total} (${catRate}%) — ${status}\n`;
+      });
+      r+=actionBlock();
+      return r;
+    }
+
+    // ── Property comparison ──
+    if(ql.includes("物业")||ql.includes("property")||ql.includes("building")||ql.includes("楼")){
+      const ps=Object.values(data.propStats);
+      if(ps.length===0)return "目前还没有添加物业，到"物业"页面新增一个吧。";
+      if(ps.length===1){
+        const p=ps[0];const pRate=p.total>0?Math.round(p.done/p.total*100):0;
+        let r=`你目前只有 **${p.name}**，合规率 ${pRate}%。`;
+        if(p.overdue>0)r+=` 有 ${p.overdue} 项逾期需要处理。`;
+        if(p.notSet>0)r+=` 另外 ${p.notSet} 项还没设到期日，建议补充。`;
+        r+=actionBlock();return r;
+      }
+      const sorted=ps.sort((a,b)=>(b.done/b.total)-(a.done/a.total));
+      let r=`你管理 ${ps.length} 个物业，合规情况对比：\n\n`;
+      sorted.forEach(p=>{
+        const pRate=p.total>0?Math.round(p.done/p.total*100):0;
+        let verdict=p.overdue>5?"情况严峻，需要重点关注":p.overdue>0?"有逾期项需要跟进":pRate>=80?"管理良好":"还需加强";
+        r+=`**${p.name}** — 完成率 ${pRate}%，${p.overdue} 项逾期 — ${verdict}\n`;
+      });
+      if(sorted.length>=2){
+        const best=sorted[0],worst=sorted[sorted.length-1];
+        r+=`\n${best.name} 表现最好，建议把${worst.name}的管理流程向${best.name}看齐。`;
+      }
+      r+=actionBlock();
+      return r;
+    }
+
+    // ── Risk assessment ──
+    if(ql.includes("风险")||ql.includes("risk")||ql.includes("评估")||ql.includes("安全")||ql.includes("safe")){
+      let r=``;
+      const scores=Object.values(data.propStats).map(p=>{
+        const score=Math.max(0,100-p.overdue*15-p.notSet*5-(p.total-p.done-p.overdue)*2);
+        return{...p,score,grade:score>=80?"A":score>=60?"B":score>=40?"C":"D"};
+      }).sort((a,b)=>a.score-b.score);
+      const avgScore=scores.length>0?Math.round(scores.reduce((a,s)=>a+s.score,0)/scores.length):0;
+      r+=`整体风险评分 **${avgScore}/100** (${avgScore>=80?"低风险":avgScore>=60?"中等风险":avgScore>=40?"较高风险":"高风险"})。\n\n`;
+      scores.forEach(p=>{
+        let advice=p.grade==="A"?"继续保持当前管理水平":p.grade==="B"?"关注即将到期项目":p.grade==="C"?"建议本周内集中处理逾期项":"需要立即行动，多项合规存在法律风险";
+        r+=`**${p.name}** 评分 ${p.score} (${p.grade}级) — ${advice}\n`;
+      });
+      const critical=overdue.filter(i=>Math.abs(i.daysLeft)>90);
+      if(critical.length>0){
+        r+=`\n最大风险点：「${critical[0].name}」在${critical[0].propName}已逾期 ${Math.abs(critical[0].daysLeft)} 天，涉及 ${critical[0].law||critical[0].agency}，可能面临执法行动。`;
+      }
+      r+=actionBlock();
+      return r;
+    }
+
+    // ── History / trends ──
+    if(ql.includes("历史")||ql.includes("history")||ql.includes("趋势")||ql.includes("trend")||ql.includes("过去")){
+      const months=Object.entries(data.histByMonth).sort((a,b)=>b[0].localeCompare(a[0]));
+      let r=`过去共有 **${data.totalHistory}** 条完成记录。\n\n`;
+      if(months.length>=2){
+        const recent=months[0];const prev=months[1];
+        const diff=recent[1]-prev[1];
+        r+=`最近一个月 (${recent[0]}) 完成了 ${recent[1]} 项${diff>0?`，比上月多 ${diff} 项，执行力在提升`:diff<0?`，比上月少 ${Math.abs(diff)} 项，需要注意节奏`:"，与上月持平"}。\n\n`;
+      }
+      const topCats=Object.entries(data.histByCat).sort((a,b)=>b[1]-a[1]);
+      if(topCats.length>0){
+        r+=`完成最多的类别是「${topCats[0][0]}」(${topCats[0][1]} 条)`;
+        if(topCats.length>1)r+=`，其次是「${topCats[1][0]}」(${topCats[1][1]} 条)`;
+        r+=`。`;
+      }
+      const lowCats=Object.entries(data.catStats).filter(([cat])=>!data.histByCat[cat]||data.histByCat[cat]<3);
+      if(lowCats.length>0)r+=`\n\n值得注意：${lowCats.map(([c,s])=>`「${c}」`).join("、")} 的历史记录较少，可能需要加强这些领域的执行。`;
+      r+=actionBlock();
+      return r;
+    }
+
+    // ── Specific category mentions ──
+    const catMatch=HK_COMPLIANCE_TEMPLATE.find(c=>ql.includes(c.category.toLowerCase())||c.items.some(i=>ql.includes(i.name.toLowerCase())||ql.includes(i.id.split("-")[0])));
+    if(catMatch){
+      const s=data.catStats[catMatch.category];
+      const catRate=s.total>0?Math.round(s.done/s.total*100):0;
+      const catOverdue=overdue.filter(i=>i.category===catMatch.category);
+      const catDueSoon=dueSoon.filter(i=>i.category===catMatch.category);
+      let r=`${catMatch.icon} **${catMatch.category}** 的合规率是 ${catRate}%，共 ${s.total} 项。\n\n`;
+      if(catOverdue.length>0){
+        r+=`有 ${catOverdue.length} 项逾期：\n`;
+        catOverdue.forEach(i=>{r+=`• 「${i.name}」@ ${i.propName}，逾期 ${Math.abs(i.daysLeft)} 天 → ${i.rec.vendor?`联系 ${i.rec.vendor}`:"需指定承办商"}\n`;});
+      }else if(catDueSoon.length>0){
+        r+=`没有逾期，但 ${catDueSoon.length} 项快到期：\n`;
+        catDueSoon.forEach(i=>{r+=`• 「${i.name}」@ ${i.propName}，${i.daysLeft} 天后到期\n`;});
+      }else{r+=`这个类别目前状态良好，没有紧急事项。`;}
+      r+=actionBlock();
+      return r;
+    }
+
+    // ── Specific property mentions ──
+    const propMatch=properties.find(p=>ql.includes(p.name.toLowerCase()));
+    if(propMatch){
+      const ps=data.propStats[propMatch.id];
+      const pRate=ps.total>0?Math.round(ps.done/ps.total*100):0;
+      const propOverdue=overdue.filter(i=>i.propId===propMatch.id);
+      let r=`**${propMatch.name}** 的合规率是 ${pRate}%。`;
+      if(propOverdue.length>0){
+        r+=`\n\n有 ${propOverdue.length} 项逾期，最紧急的是「${propOverdue[0].name}」逾期 ${Math.abs(propOverdue[0].daysLeft)} 天。`;
+        r+=`\n→ 建议${propOverdue[0].rec.vendor?`联系 ${propOverdue[0].rec.vendor} 安排检查`:"先指定承办商再安排"}。`;
+      }else{r+=` 目前没有逾期项目。`;}
+      if(ps.notSet>0)r+=`\n\n另外有 ${ps.notSet} 项缺少到期日，建议补充。`;
+      r+=actionBlock();
+      return r;
+    }
+
+    // ── Report related ──
+    if(ql.includes("报告")||ql.includes("report")||ql.includes("agm")||ql.includes("审计")||ql.includes("audit")){
+      let r=`你可以到"报告"页面生成完整的 AGM 合规报告。\n\n当前状况：合规率 ${rate}%，${overdue.length} 项逾期。`;
+      if(overdue.length>0)r+=`\n\n建议先把逾期项目处理完再出报告，否则报告上会显示较多红色警告。主要逾期：\n`+overdue.slice(0,3).map(i=>`• 「${i.name}」@ ${i.propName}`).join("\n");
+      else r+=`\n\n目前没有逾期，报告会比较好看。随时可以生成。`;
+      r+=actionBlock();
+      return r;
+    }
+
+    // ── Help ──
+    if(ql.includes("help")||ql.includes("帮助")||ql.includes("功能")||ql.includes("?")||ql.includes("？")||ql.includes("什么")){
+      return `我可以用自然语言跟你聊合规状况，比如：\n\n• "现在状况怎么样" — 我会告诉你整体情况和该做什么\n• "哪些逾期了" — 列出逾期项目和处理建议\n• "消防安全怎么样" — 查看特定类别\n• "海景花园情况" — 查看特定物业\n• "风险大不大" — 给你评分和风险分析\n• "最近做了什么" — 历史趋势\n\n也可以直接问问题，比如"下个月要做什么"或"该联系哪个承办商"。`;
+    }
+
+    // ── Vendor related ──
+    if(ql.includes("承办商")||ql.includes("vendor")||ql.includes("联系")||ql.includes("contact")){
+      const vendors={};data.allItems.forEach(i=>{if(i.rec.vendor){if(!vendors[i.rec.vendor])vendors[i.rec.vendor]={total:0,overdue:0,dueSoon:0};vendors[i.rec.vendor].total++;if(i.urgency==="overdue")vendors[i.rec.vendor].overdue++;if(i.urgency==="due_soon")vendors[i.rec.vendor].dueSoon++;}});
+      const vList=Object.entries(vendors).sort((a,b)=>b[1].overdue-a[1].overdue);
+      if(vList.length===0)return "目前没有记录承办商信息。到"合规"页面编辑各项目时可以添加。"+actionBlock();
+      let r=`你目前有 ${vList.length} 个承办商：\n\n`;
+      vList.forEach(([name,v])=>{
+        let status=v.overdue>0?`⚠️ ${v.overdue}项逾期 — 需要马上联系`:v.dueSoon>0?`${v.dueSoon}项快到期 — 提前沟通排期`:"当前无紧急事项";
+        r+=`**${name}** — 负责 ${v.total} 项 — ${status}\n`;
+      });
+      r+=actionBlock();
+      return r;
+    }
+
+    // ── Next month / upcoming ──
+    if(ql.includes("下个月")||ql.includes("next month")||ql.includes("接下来")||ql.includes("upcoming")||ql.includes("计划")||ql.includes("plan")){
+      const upcoming=data.allItems.filter(i=>i.daysLeft!==null&&i.daysLeft>0&&i.daysLeft<=60&&i.urgency!=="completed").sort((a,b)=>a.daysLeft-b.daysLeft);
+      if(upcoming.length===0&&overdue.length===0)return "接下来60天内没有到期项目，也没有逾期。状态良好！"+actionBlock();
+      let r=``;
+      if(overdue.length>0)r+=`首先，有 ${overdue.length} 项已逾期的需要尽快处理。\n\n`;
+      if(upcoming.length>0){
+        r+=`接下来60天内有 **${upcoming.length}** 项需要完成：\n\n`;
+        upcoming.slice(0,8).forEach(i=>{r+=`• 「${i.name}」(${i.propName}) — ${i.daysLeft}天后 → ${i.rec.vendor||"需指定承办商"}\n`;});
+        if(upcoming.length>8)r+=`\n…还有 ${upcoming.length-8} 项。`;
+      }
+      r+=actionBlock();
+      return r;
+    }
+
+    // ── Fallback: intelligent default based on current state ──
+    const r=[];
+    if(overdue.length>0){
+      r.push(`我注意到你有 ${overdue.length} 项逾期，最紧急的是「${overdue[0].name}」在${overdue[0].propName}，已超期 ${Math.abs(overdue[0].daysLeft)} 天。`);
+      r.push(`→ 建议${overdue[0].rec.vendor?`先联系 ${overdue[0].rec.vendor} 安排处理`:"先到合规页面指定承办商"}。`);
+    }else if(dueSoon.length>0){
+      r.push(`目前没有逾期项目，但有 ${dueSoon.length} 项即将到期。最近的是「${dueSoon[0].name}」，还剩 ${dueSoon[0].daysLeft} 天。`);
+    }else{
+      r.push(`你的合规状况不错，合规率 ${rate}%，没有紧急事项。`);
+    }
+    r.push(`\n你可以跟我聊任何合规相关的问题，比如"消防安全怎么样"、"下个月要做什么"、"哪个承办商要联系"等。`);
+    return r.join("\n");
   };
 
   const send=()=>{
@@ -693,13 +844,20 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
 
   // Auto-greeting
   useEffect(()=>{
-    const data=analyze();const overdue=data.allItems.filter(i=>i.urgency==="overdue");
+    const data=analyze();const overdue=data.allItems.filter(i=>i.urgency==="overdue").sort((a,b)=>a.daysLeft-b.daysLeft);
+    const dueSoon=data.allItems.filter(i=>i.urgency==="due_soon").sort((a,b)=>a.daysLeft-b.daysLeft);
     const completed=data.allItems.filter(i=>i.urgency==="completed");
     const rate=data.allItems.length>0?Math.round(completed.length/data.allItems.length*100):0;
-    let greeting=`你好！我是合规智能助手 🤖\n\n`;
-    greeting+=`当前系统状态：${properties.length} 个物业，合规率 ${rate}%`;
-    if(overdue.length>0)greeting+=`\n⚠️ 检测到 ${overdue.length} 项逾期，输入"逾期"查看详情`;
-    greeting+=`\n\n输入"帮助"查看所有功能`;
+    let greeting=`你好！我是你的合规助手。\n\n`;
+    if(overdue.length>0){
+      greeting+=`提醒一下，目前有 **${overdue.length} 项逾期**需要处理。最紧急的是「${overdue[0].name}」在${overdue[0].propName}，已超期 ${Math.abs(overdue[0].daysLeft)} 天。${overdue[0].rec.vendor?`建议尽快联系 ${overdue[0].rec.vendor}。`:""}`;
+      if(overdue.length>1)greeting+=`\n\n问我"逾期"可以看完整清单和处理建议。`;
+    }else if(dueSoon.length>0){
+      greeting+=`好消息，目前没有逾期项目！不过有 ${dueSoon.length} 项会在30天内到期，最近的是「${dueSoon[0].name}」还剩 ${dueSoon[0].daysLeft} 天。`;
+    }else{
+      greeting+=`${properties.length} 个物业的合规率是 ${rate}%，目前没有紧急事项。状态不错！`;
+    }
+    greeting+=`\n\n有什么想了解的直接问我就行。`;
     setMsgs([{role:"bot",text:greeting}]);
   },[]);// eslint-disable-line
 
