@@ -920,60 +920,78 @@ function AIBot({properties,complianceData,historyData,onNavigate}){
     });
   };
 
-  return(<div>
-    <div style={{background:"linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%)",borderRadius:16,overflow:"hidden",border:"1px solid #e8e7e3"}}>
+  const[open,setOpen]=useState(false);
+  // Unread indicator
+  const[unread,setUnread]=useState(0);
+  useEffect(()=>{if(!open&&msgs.length>1)setUnread(prev=>prev+1);},[msgs.length]);// eslint-disable-line
+  useEffect(()=>{if(open)setUnread(0);},[open]);
+
+  return(<>
+    {/* Floating bubble */}
+    {!open&&<button onClick={()=>setOpen(true)} style={{position:"fixed",bottom:24,right:24,width:56,height:56,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#3a7bd5,#00d2ff)",color:"#fff",fontSize:24,cursor:"pointer",boxShadow:"0 4px 20px rgba(58,123,213,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,transition:"transform 0.2s"}}
+      onMouseOver={e=>{e.currentTarget.style.transform="scale(1.1)";}}
+      onMouseOut={e=>{e.currentTarget.style.transform="scale(1)";}}
+    >🤖
+      {unread>0&&<span style={{position:"absolute",top:-2,right:-2,width:20,height:20,borderRadius:"50%",background:"#e74c3c",color:"#fff",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{unread}</span>}
+    </button>}
+
+    {/* Chat panel */}
+    {open&&<div style={{position:"fixed",bottom:24,right:24,width:380,maxHeight:"70vh",borderRadius:16,overflow:"hidden",boxShadow:"0 8px 40px rgba(0,0,0,0.3)",zIndex:9999,display:"flex",flexDirection:"column",background:"linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%)"}}>
+      <style>{`@keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0.3}}@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,0.4)}50%{box-shadow:0 0 0 10px rgba(231,76,60,0)}}`}</style>
       {/* Header */}
-      <div style={{padding:"16px 20px",background:"rgba(255,255,255,0.05)",borderBottom:"1px solid rgba(255,255,255,0.1)",display:"flex",alignItems:"center",gap:10}}>
-        <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#00d2ff,#3a7bd5)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🤖</div>
-        <div><div style={{fontSize:15,fontWeight:600,color:"#fff"}}>合规智能助手</div><div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>AI Compliance Analyzer · 语音支持 · 本地运行 · 无需API</div></div>
-        {speaking&&<button onClick={()=>{speechSynthesis.cancel();setSpeaking(false);}} style={{marginLeft:"auto",padding:"4px 10px",borderRadius:6,border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.7)",cursor:"pointer",fontSize:11}}>⏹ 停止朗读</button>}
+      <div style={{padding:"12px 16px",background:"rgba(255,255,255,0.05)",borderBottom:"1px solid rgba(255,255,255,0.1)",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+        <div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#00d2ff,#3a7bd5)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>🤖</div>
+        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:"#fff"}}>合规智能助手</div><div style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>AI Powered · Claude</div></div>
+        {speaking&&<button onClick={()=>{speechSynthesis.cancel();setSpeaking(false);}} style={{padding:"3px 8px",borderRadius:5,border:"1px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.6)",cursor:"pointer",fontSize:10}}>⏹</button>}
+        <button onClick={()=>setOpen(false)} style={{width:28,height:28,borderRadius:6,border:"none",background:"rgba(255,255,255,0.08)",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}
+          onMouseOver={e=>{e.currentTarget.style.background="rgba(255,255,255,0.2)";}}
+          onMouseOut={e=>{e.currentTarget.style.background="rgba(255,255,255,0.08)";}}
+        >✕</button>
       </div>
 
       {/* Chat area */}
-      <div ref={chatRef} style={{height:420,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:12}}>
+      <div ref={chatRef} style={{flex:1,overflowY:"auto",padding:12,display:"flex",flexDirection:"column",gap:10,minHeight:250,maxHeight:"calc(70vh - 180px)"}}>
         {msgs.map((m,i)=>(
-          <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",alignItems:"flex-end",gap:4}}>
-            <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:m.role==="user"?"14px 14px 4px 14px":"14px 14px 14px 4px",background:m.role==="user"?"linear-gradient(135deg,#3a7bd5,#00d2ff)":"rgba(255,255,255,0.08)",color:m.role==="user"?"#fff":"rgba(255,255,255,0.9)",fontSize:13,lineHeight:1.6,backdropFilter:"blur(10px)"}}>
+          <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",alignItems:"flex-end",gap:3}}>
+            <div style={{maxWidth:"82%",padding:"8px 12px",borderRadius:m.role==="user"?"12px 12px 3px 12px":"12px 12px 12px 3px",background:m.role==="user"?"linear-gradient(135deg,#3a7bd5,#00d2ff)":"rgba(255,255,255,0.08)",color:m.role==="user"?"#fff":"rgba(255,255,255,0.9)",fontSize:12,lineHeight:1.6}}>
               {renderText(m.text)}
             </div>
-            {m.role==="bot"&&<button onClick={()=>speakText(m.text)} title="朗读" style={{width:26,height:26,borderRadius:6,border:"none",background:"rgba(255,255,255,0.08)",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:12,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}
-              onMouseOver={e=>{e.target.style.background="rgba(255,255,255,0.2)";}}
-              onMouseOut={e=>{e.target.style.background="rgba(255,255,255,0.08)";}}
+            {m.role==="bot"&&<button onClick={()=>speakText(m.text)} title="朗读" style={{width:22,height:22,borderRadius:5,border:"none",background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:10,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}
+              onMouseOver={e=>{e.currentTarget.style.background="rgba(255,255,255,0.2)";}}
+              onMouseOut={e=>{e.currentTarget.style.background="rgba(255,255,255,0.06)";}}
             >🔊</button>}
           </div>
         ))}
-        {thinking&&<div style={{display:"flex",justifyContent:"flex-start"}}><div style={{padding:"10px 14px",borderRadius:"14px 14px 14px 4px",background:"rgba(255,255,255,0.08)",color:"rgba(255,255,255,0.5)",fontSize:13}}>分析中<span style={{animation:"blink 1s infinite"}}>...</span></div></div>}
-        <style>{`@keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0.3}}`}</style>
+        {thinking&&<div style={{display:"flex",justifyContent:"flex-start"}}><div style={{padding:"8px 12px",borderRadius:"12px 12px 12px 3px",background:"rgba(255,255,255,0.08)",color:"rgba(255,255,255,0.5)",fontSize:12}}>分析中<span style={{animation:"blink 1s infinite"}}>...</span></div></div>}
       </div>
 
       {/* Quick actions */}
-      <div style={{padding:"8px 16px",display:"flex",gap:6,overflowX:"auto",borderTop:"1px solid rgba(255,255,255,0.05)"}}>
-        {[{l:"📊 总览",q:"总览"},{l:"🔴 逾期",q:"逾期"},{l:"📋 分类",q:"分类"},{l:"⚠️ 风险",q:"风险"},{l:"💡 建议",q:"建议"},{l:"📅 历史",q:"历史"}].map(b=>(
+      <div style={{padding:"6px 12px",display:"flex",gap:4,overflowX:"auto",borderTop:"1px solid rgba(255,255,255,0.05)",flexShrink:0}}>
+        {[{l:"📊 总览",q:"现在状况怎么样"},{l:"🔴 逾期",q:"哪些项目逾期了"},{l:"⚠️ 风险",q:"风险评估"},{l:"💡 建议",q:"我接下来该做什么"}].map(b=>(
           <button key={b.q} onClick={async()=>{const q=b.q;setMsgs(prev=>[...prev,{role:"user",text:q}]);setThinking(true);try{const resp=await callAI(q);setMsgs(prev=>[...prev,{role:"bot",text:resp}]);}catch{setMsgs(prev=>[...prev,{role:"bot",text:"抱歉，出了点问题。"}]);}setThinking(false);}}
-            style={{padding:"5px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.7)",fontSize:11,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.15s",flexShrink:0}}
-            onMouseOver={e=>{e.target.style.background="rgba(255,255,255,0.15)";}}
-            onMouseOut={e=>{e.target.style.background="rgba(255,255,255,0.05)";}}
+            style={{padding:"4px 10px",borderRadius:6,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.04)",color:"rgba(255,255,255,0.6)",fontSize:10,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}
+            onMouseOver={e=>{e.currentTarget.style.background="rgba(255,255,255,0.12)";}}
+            onMouseOut={e=>{e.currentTarget.style.background="rgba(255,255,255,0.04)";}}
           >{b.l}</button>
         ))}
       </div>
 
       {/* Input */}
-      <div style={{padding:"12px 16px",borderTop:"1px solid rgba(255,255,255,0.1)",display:"flex",gap:8,alignItems:"center"}}>
+      <div style={{padding:"10px 12px",borderTop:"1px solid rgba(255,255,255,0.1)",display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
         <button onClick={startListening} title={listening?"停止录音":"语音输入"}
-          style={{width:40,height:40,borderRadius:10,border:"none",background:listening?"linear-gradient(135deg,#e74c3c,#c0392b)":"rgba(255,255,255,0.08)",color:"#fff",cursor:"pointer",fontSize:16,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s",animation:listening?"pulse 1.5s infinite":"none"}}
+          style={{width:34,height:34,borderRadius:8,border:"none",background:listening?"linear-gradient(135deg,#e74c3c,#c0392b)":"rgba(255,255,255,0.08)",color:"#fff",cursor:"pointer",fontSize:14,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",animation:listening?"pulse 1.5s infinite":"none"}}
           onMouseOver={e=>{if(!listening)e.currentTarget.style.background="rgba(255,255,255,0.15)";}}
           onMouseOut={e=>{if(!listening)e.currentTarget.style.background="rgba(255,255,255,0.08)";}}
         >🎙️</button>
-        <style>{`@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,0.4)}50%{box-shadow:0 0 0 10px rgba(231,76,60,0)}}`}</style>
         <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")send();}}
-          placeholder={listening?"正在聆听...":"输入或按🎙️语音提问"}
-          style={{flex:1,padding:"10px 14px",borderRadius:10,border:listening?"1px solid rgba(231,76,60,0.5)":"1px solid rgba(255,255,255,0.15)",background:listening?"rgba(231,76,60,0.08)":"rgba(255,255,255,0.05)",color:"#fff",fontSize:13,outline:"none",transition:"all 0.2s"}}/>
+          placeholder={listening?"正在聆听...":"问我任何合规问题..."}
+          style={{flex:1,padding:"8px 12px",borderRadius:8,border:listening?"1px solid rgba(231,76,60,0.5)":"1px solid rgba(255,255,255,0.12)",background:listening?"rgba(231,76,60,0.08)":"rgba(255,255,255,0.04)",color:"#fff",fontSize:12,outline:"none"}}/>
         <button onClick={send} disabled={!input.trim()||thinking}
-          style={{padding:"10px 18px",borderRadius:10,border:"none",background:input.trim()&&!thinking?"linear-gradient(135deg,#3a7bd5,#00d2ff)":"rgba(255,255,255,0.1)",color:"#fff",cursor:input.trim()&&!thinking?"pointer":"default",fontSize:13,fontWeight:600}}>发送</button>
+          style={{padding:"8px 14px",borderRadius:8,border:"none",background:input.trim()&&!thinking?"linear-gradient(135deg,#3a7bd5,#00d2ff)":"rgba(255,255,255,0.08)",color:"#fff",cursor:input.trim()&&!thinking?"pointer":"default",fontSize:12,fontWeight:600}}>发送</button>
       </div>
-      {listening&&<div style={{padding:"4px 16px 8px",fontSize:11,color:"rgba(231,76,60,0.8)",textAlign:"center"}}>🔴 正在录音 — 请说话，完成后点击🎙️或自动停止</div>}
-    </div>
-  </div>);
+      {listening&&<div style={{padding:"3px 12px 6px",fontSize:10,color:"rgba(231,76,60,0.8)",textAlign:"center",flexShrink:0}}>🔴 正在录音...</div>}
+    </div>}
+  </>);
 }
 
 export default function App(){
@@ -989,7 +1007,7 @@ export default function App(){
   const handleReset=async()=>{if(confirm("确定要重置并加载示例数据吗？")){try{await window.storage.delete("hk-compliance-properties");}catch{}try{await window.storage.delete("hk-compliance-data");}catch{}try{await window.storage.delete("hk-compliance-history");}catch{}const d=generateDemoData();setProperties(d.props);setComplianceData(d.compliance);setHistoryData(d.history);try{await window.storage.set("hk-compliance-properties",JSON.stringify(d.props));}catch{}try{await window.storage.set("hk-compliance-data",JSON.stringify(d.compliance));}catch{}try{await window.storage.set("hk-compliance-history",JSON.stringify(d.history));}catch{}setView("dashboard");}};
 
   if(loading)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:300,fontFamily:"'Noto Sans SC','PingFang SC',-apple-system,sans-serif"}}><div style={{textAlign:"center",color:"#888780"}}><div style={{fontSize:28,marginBottom:8}}>🏢</div><div style={{fontSize:14}}>加载中...</div></div></div>);
-  const nav=[{id:"dashboard",l:"总览",i:"📊"},{id:"properties",l:"物业",i:"🏢"},{id:"checklist",l:"合规",i:"✅"},{id:"report",l:"报告",i:"📄"},{id:"history",l:"历史",i:"🕐"},{id:"ai",l:"AI 助手",i:"🤖"}];
+  const nav=[{id:"dashboard",l:"总览",i:"📊"},{id:"properties",l:"物业",i:"🏢"},{id:"checklist",l:"合规",i:"✅"},{id:"report",l:"报告",i:"📄"},{id:"history",l:"历史",i:"🕐"}];
   return(<div style={{fontFamily:"'Noto Sans SC','PingFang SC',-apple-system,sans-serif",maxWidth:800,margin:"0 auto",color:"#2c2c2a"}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}><div><div style={{fontSize:22,fontWeight:700,letterSpacing:-0.5}}>物业合规管理系统</div><div style={{fontSize:12,color:"#888780",marginTop:2}}>香港物业管理合规追踪 · Property Compliance Tracker</div></div><button onClick={handleReset} style={{fontSize:11,color:"#b4b2a9",background:"none",border:"none",cursor:"pointer",padding:"4px 8px"}}>重置示例</button></div>
     <div style={{display:"flex",gap:2,marginBottom:24,borderBottom:"1px solid #e8e7e3",overflowX:"auto"}}>{nav.map(n=>(<button key={n.id} onClick={()=>setView(n.id)} style={{padding:"10px 12px",fontSize:13,fontWeight:view===n.id?600:400,color:view===n.id?"#2c2c2a":"#888780",background:"none",border:"none",borderBottom:view===n.id?"2px solid #2c2c2a":"2px solid transparent",cursor:"pointer",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}><span style={{fontSize:14}}>{n.i}</span> {n.l}</button>))}</div>
@@ -1014,8 +1032,7 @@ export default function App(){
 
     {view==="history"&&<HistoryView historyData={historyData} properties={properties} onDelete={id=>sH(historyData.filter(h=>h.id!==id))} onUploadToHistory={files=>{alert(`已上传 ${files.length} 个历史文件`);}}/>}
 
-    {view==="ai"&&<AIBot properties={properties} complianceData={complianceData} historyData={historyData} onNavigate={(v,pid)=>{setSelectedProperty(pid);setView(v);}}/>}
-
     <div style={{marginTop:32,padding:"12px 16px",borderTop:"1px solid #e8e7e3",fontSize:11,color:"#b4b2a9",lineHeight:1.6}}>基于香港法例：Cap.95 消防条例 · Cap.123 建筑物条例 · Cap.344 建筑物管理条例 · Cap.406 电力条例 · Cap.572 消防安全(建筑物)条例 · Cap.618 升降机及自动梯条例 · Cap.626 物业管理服务条例。资料仅供参考。<br/>⚠️ 当前为演示版本，预装了示例数据。点击右上角「重置示例」可重新加载。</div>
+    <AIBot properties={properties} complianceData={complianceData} historyData={historyData} onNavigate={(v,pid)=>{setSelectedProperty(pid);setView(v);}}/>
   </div>);
 }
